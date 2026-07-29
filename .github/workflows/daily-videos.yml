@@ -33,8 +33,11 @@ jobs:
       - name: Install narration and thumbnail tools
         run: python3 -m pip install --quiet edge-tts pillow
 
-      - name: Confirm ffmpeg
-        run: ffmpeg -version
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          ffmpeg -version
 
       - name: Render with locked Ava voice and female presenter
         env:
@@ -74,4 +77,3 @@ jobs:
             output/*-thumbnail.jpg
             output/*.txt
           if-no-files-found: ignore
-
