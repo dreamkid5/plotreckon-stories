@@ -39,6 +39,9 @@ jobs:
           sudo apt-get install --yes ffmpeg
           ffmpeg -version
 
+      - name: Verify the 5.5-second production lock
+        run: npm test
+
       - name: Render with locked Ava voice and female presenter
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -50,6 +53,7 @@ jobs:
           CF_INPUT: content
           CF_OUTPUT: output
           CF_STYLE: story
+          CF_SCENE_SECONDS: "5.5"
           CF_SEO: "0"
           CF_THUMBNAILS: "1"
           CF_TIME_BUDGET_MIN: "330"

@@ -4,6 +4,8 @@ A YouTube storytime automation suite built with Astro. Add a script and PlotReck
 Stories renders a modern photorealistic video with the locked **Ava female voice**,
 a female presenter on the left, matching story scenes on the right, highlighted
 captions, and a hook thumbnail that reuses the same female presenter.
+Every production scene is locked to exactly 5.5 seconds; Ava audio and caption
+timings are fitted to that window and invalid scene durations fail the render.
 
 **Two ways to publish:**
 

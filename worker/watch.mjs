@@ -10,7 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { jobsFromCSV, slug } from "./csv.mjs";
-import { renderJob } from "./render.mjs";
+import { LOCKED_SCENE_SECONDS, renderJob } from "./render.mjs";
 import { uploadToYouTube } from "./upload.mjs";
 import { generateSEO } from "./seo.mjs";
 import { LOCKED_VOICE, LOCKED_VOICE_LABEL } from "./voice.mjs";
@@ -22,7 +22,8 @@ const cfg = {
   input: process.env.CF_INPUT || "./input",
   output: process.env.CF_OUTPUT || "./output",
   style: process.env.CF_STYLE || "story",
-  sceneSeconds: Number(process.env.CF_SCENE_SECONDS || 4.2),
+  // Fixed production contract; CF_SCENE_SECONDS is intentionally ignored.
+  sceneSeconds: LOCKED_SCENE_SECONDS,
   // Ken Burns zoom strength. Subtle by default so shots feel natural, not pushed in.
   zoom: Number(process.env.CF_ZOOM || 0.06),
   // Presenter panel stays still by default (only the scene photos zoom). Set
@@ -253,6 +254,7 @@ async function main() {
   log("input:  " + path.resolve(cfg.input));
   log("output: " + path.resolve(cfg.output));
   log("narration: locked to " + LOCKED_VOICE_LABEL + " (" + LOCKED_VOICE + ")");
+  log("scene duration: locked to " + LOCKED_SCENE_SECONDS + " seconds");
   log("seo: " + (cfg.seoEnabled ? "on, Claude writes titles, descriptions, and tags" : "off (set ANTHROPIC_API_KEY to enable)"));
   log("characters: " + (cfg.anthropicKey && cfg.characters ? "on, Claude keeps main characters consistent" : "off"));
   log("scene matching: " + (cfg.anthropicKey && cfg.sceneVisuals ? "on, Claude matches each image to the narration" : "off"));

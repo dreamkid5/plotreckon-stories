@@ -44,7 +44,7 @@ That's it. Repeat with as many tales as you like.
 
 - **Length = video length.** Roughly **150 words ≈ 1 minute** of video. Want 10 minutes?
   Write about 1,500 words. Want an hour? About 9,000 words.
-- Every sentence or two becomes a **scene** (about 6 seconds each), timed to the voice.
+- Every sentence or two becomes a scene locked to **exactly 5.5 seconds**.
 - Want the **same storyteller** to appear throughout? Name and describe them once, e.g.
   "Baba, an old man with long white hair and a brown robe, sat by the fire." The tool then
   keeps him looking the same in every scene.
@@ -59,7 +59,7 @@ These are already set to sensible defaults, so you can ignore them:
 - **Voice:** locked Ava female narrator (`en-US-AvaMultilingualNeural`) for every script.
 - **Presenter:** always female on the left and the same woman on the thumbnail.
 - **Look:** modern photorealistic storytime (`story`).
-- **Scene length:** about 6 seconds.
+- **Scene length:** exactly 5.5 seconds, with Ava and captions time-fitted to match.
 
 ---
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
+    "test": "node --test worker/render.test.mjs",
     "build": "astro build",
     "preview": "astro preview"
   },
