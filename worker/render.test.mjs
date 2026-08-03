@@ -14,6 +14,11 @@ import {
   scaleWordTimings
 } from "./render.mjs";
 import { PHOTOREALISTIC_PRESENTER_ASSET } from "./presenter.mjs";
+import {
+  makeHook,
+  THUMBNAIL_HOOK_MAX_WORDS,
+  THUMBNAIL_HOOK_MIN_WORDS
+} from "./thumbnail.mjs";
 
 const execFileAsync = promisify(execFile);
 const bundledFfmpegPath = fileURLToPath(new URL("./tools/ffmpeg", import.meta.url));
@@ -52,6 +57,32 @@ test("production presenter is a reviewed high-resolution portrait asset", async 
   const image = await fs.readFile(PHOTOREALISTIC_PRESENTER_ASSET);
   assert.ok(image.length >= 100000);
   assert.deepEqual([...image.subarray(0, 3)], [255, 216, 255]);
+});
+
+test("thumbnail hook stays wordy and preserves the catchy opening", () => {
+  const script = "I found the preschool tuition receipt by accident. It was tucked inside a jacket pocket, the kind of thing you find when you're doing laundry on a Tuesday night, half tired, half thinking about what to make for dinner tomorrow. A payment revealed the family secret.";
+  const hook = makeHook({ script });
+  const words = hook.split(/\s+/).length;
+  assert.ok(words >= THUMBNAIL_HOOK_MIN_WORDS);
+  assert.ok(words <= THUMBNAIL_HOOK_MAX_WORDS);
+  assert.match(hook, /^I found the preschool tuition receipt by accident\./);
+});
+
+test("short explicit thumbnail hook is expanded instead of becoming a headline", () => {
+  const hook = makeHook({
+    hook: "My sister took over my home.",
+    script: "She moved in across the hall and within a week she was wearing my clothes and eating my food. When she said I never shared anything, I stopped paying her rent and told the whole family why."
+  });
+  assert.match(hook, /^My sister took over my home\./);
+  assert.ok(hook.split(/\s+/).length >= THUMBNAIL_HOOK_MIN_WORDS);
+  assert.ok(hook.split(/\s+/).length <= THUMBNAIL_HOOK_MAX_WORDS);
+});
+
+test("thumbnail hook never exceeds the dense reference limit", () => {
+  const longHook = Array.from({ length: 70 }, (_, i) => "word" + i).join(" ");
+  const hook = makeHook({ hook: longHook });
+  assert.equal(hook.split(/\s+/).length, THUMBNAIL_HOOK_MAX_WORDS);
+  assert.match(hook, /\.\.\.$/);
 });
 
 test("real narration audio is rendered to exactly 5.5 seconds", async () => {

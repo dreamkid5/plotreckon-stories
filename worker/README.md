@@ -65,6 +65,11 @@ portrait in `assets/presenters/photorealistic-female-presenter.jpg`. The same wo
 is used in the thumbnail, and production never substitutes a generated doll-like,
 CGI, anime, or illustrated presenter.
 
+Thumbnails always use a dense 28-to-46-word story hook in the reference layout:
+catchy hook text on the left, the same presenter on the right, and green, purple,
+gold, and red emphasis. Explicit hooks take priority; short hooks are expanded from
+the script and long hooks are trimmed at a sentence boundary.
+
 Azure, about 500 thousand characters a month free:
 
 ```

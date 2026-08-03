@@ -15,27 +15,44 @@ const MONTSERRAT = path.join(FONTS_DIR, "Montserrat-ExtraBold.ttf");
 // Anton: a heavy condensed display font, used only by the legacy fallback.
 const ANTON = path.join(FONTS_DIR, "Anton-Regular.ttf");
 
-// The hook that goes on the thumbnail: the opening of the story, trimmed to a punchy
-// length that ends on a sentence boundary where possible.
+export const THUMBNAIL_HOOK_MIN_WORDS = 28;
+export const THUMBNAIL_HOOK_MAX_WORDS = 46;
+
+const normaliseHook = (value) => String(value || "").replace(/\s+/g, " ").trim();
+const hookWordCount = (value) => normaliseHook(value).split(" ").filter(Boolean).length;
+
+// The reference format uses a substantial story hook rather than a short headline.
+// An explicit hook always leads. If it is short, continue into the script; if no hook
+// was supplied, use the script's opening. End on a sentence boundary between 28 and
+// 46 words whenever possible, matching the dense reference-thumbnail rhythm.
 export function makeHook(job) {
-  let t = String(job.hook || job.script || job.title || "").replace(/\s+/g, " ").trim();
-  if (!t) return "";
-  const words = t.split(" ");
-  if (words.length > 46) t = words.slice(0, 46).join(" ") + "...";
-  // Prefer to end on a full sentence once the opening hook has enough substance.
-  // Do not anchor this regex: an anchored global match only returns the first
-  // sentence, which used to reduce multi-sentence hooks to a weak opening line.
-  const sentences = t.match(/[^.!?…]+[.!?…]+(?:["'”’])?(?=\s|$)/g);
+  const explicit = normaliseHook(job.hook);
+  const script = normaliseHook(job.script);
+  const title = normaliseHook(job.title);
+  let source = explicit || script || title;
+  if (explicit && hookWordCount(explicit) < THUMBNAIL_HOOK_MIN_WORDS && script) {
+    source = script.toLowerCase().startsWith(explicit.toLowerCase())
+      ? script
+      : explicit + " " + script;
+  }
+  if (!source) return "";
+
+  const sentences = source.match(/[^.!?…]+[.!?…]+(?:["'”’])?(?=\s|$)/g);
   if (sentences) {
     let acc = "";
     for (const s of sentences) {
       const next = (acc ? acc + " " : "") + s.trim();
-      if (next.split(" ").length > 46) break;
+      if (hookWordCount(next) > THUMBNAIL_HOOK_MAX_WORDS) break;
       acc = next;
+      if (hookWordCount(acc) >= THUMBNAIL_HOOK_MIN_WORDS) return acc;
     }
-    if (acc.split(" ").length >= 10) t = acc;
   }
-  return t.trim();
+
+  const words = source.split(" ");
+  if (words.length > THUMBNAIL_HOOK_MAX_WORDS) {
+    return words.slice(0, THUMBNAIL_HOOK_MAX_WORDS).join(" ").replace(/[,:;—-]+$/, "") + "...";
+  }
+  return source;
 }
 
 // The reference-style thumbnail: presenter on the right, coloured hook on the left.
@@ -48,6 +65,12 @@ async function buildStoryThumbnail(job, cfg, workDir, outFile, deps) {
 
   const hook = makeHook(job);
   if (!hook) return null;
+  const scriptWords = hookWordCount(job.script);
+  const hookWords = hookWordCount(hook);
+  if (scriptWords >= THUMBNAIL_HOOK_MIN_WORDS && hookWords < THUMBNAIL_HOOK_MIN_WORDS) {
+    throw new Error("thumbnail hook was too short for the wordy reference format");
+  }
+  cfg.log("  thumbnail hook: " + hookWords + " words from the catchy story opening");
 
   await deps.run(cfg.edgeCmd || "python3", [
     path.join(HERE, "thumbnail.py"),
