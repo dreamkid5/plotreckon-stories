@@ -26,5 +26,7 @@ Each narrated segment also produces word-boundary timing data. The renderer uses
 those timings for highlighted captions and verifies that both the audio and timing
 files are valid. Transient narration failures are retried up to eight times.
 
-The female presenter is a separate generated image. She appears on the left side
-of the video, and the exact same image is reused on the right side of the thumbnail.
+The female presenter is a reviewed real-camera-style portrait stored in the
+repository. She appears on the left side of the video, and the exact same image is
+reused on the right side of the thumbnail. Production does not generate presenters
+through the scene-image service, preventing doll-like, CGI, or illustrated faces.

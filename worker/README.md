@@ -60,6 +60,11 @@ Production narration is locked to the free Ava female voice and needs no paid
 provider key. Legacy provider settings below are retained only for older custom
 uses of this worker; the production watcher ignores them.
 
+The left-side presenter is also locked to the reviewed photorealistic adult-woman
+portrait in `assets/presenters/photorealistic-female-presenter.jpg`. The same woman
+is used in the thumbnail, and production never substitutes a generated doll-like,
+CGI, anime, or illustrated presenter.
+
 Azure, about 500 thousand characters a month free:
 
 ```

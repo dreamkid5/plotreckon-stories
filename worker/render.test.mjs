@@ -13,6 +13,7 @@ import {
   lockNarrationDuration,
   scaleWordTimings
 } from "./render.mjs";
+import { PHOTOREALISTIC_PRESENTER_ASSET } from "./presenter.mjs";
 
 const execFileAsync = promisify(execFile);
 const bundledFfmpegPath = fileURLToPath(new URL("./tools/ffmpeg", import.meta.url));
@@ -45,6 +46,12 @@ test("caption word timings scale to the locked scene duration", () => {
     { w: "hello", t: 1.1, d: 0.55 },
     { w: "world", t: 4.4, d: 1.1 }
   ]);
+});
+
+test("production presenter is a reviewed high-resolution portrait asset", async () => {
+  const image = await fs.readFile(PHOTOREALISTIC_PRESENTER_ASSET);
+  assert.ok(image.length >= 100000);
+  assert.deepEqual([...image.subarray(0, 3)], [255, 216, 255]);
 });
 
 test("real narration audio is rendered to exactly 5.5 seconds", async () => {

@@ -9,7 +9,7 @@ import { splitScript, buildPrompt } from "./csv.mjs";
 import { buildCharacterBible, sceneCharacterNote } from "./characters.mjs";
 import { buildSceneVisuals } from "./visuals.mjs";
 import { buildThumbnail } from "./thumbnail.mjs";
-import { presenterSeed } from "./presenter.mjs";
+import { installPhotorealisticPresenter } from "./presenter.mjs";
 import {
   LOCKED_VOICE,
   LOCKED_VOICE_PITCH,
@@ -516,18 +516,10 @@ export async function renderJob(job, cfg, workDir, outFile) {
   if (storyMode) {
     const gender = "female";
     job.gender = gender;
-    const seed = presenterSeed(job);
-    job.presenterSeed = seed;
-    const who = "a friendly relatable adult woman in her late twenties, unmistakably female, natural shoulder-length hair, plain casual modern top, no man, no male person";
-    const pPrompt = "cinematic photorealistic upper body portrait of " + who +
-      ", warm genuine calm expression, facing the camera, soft natural indoor lighting, softly blurred cosy home background, shallow depth of field, 35mm, highly detailed realistic skin and face, not an illustration";
-    const pPath = path.join(workDir, "presenter.jpg");
-    if (await fetchImage(pPrompt, seed, pPath, cfg, { width: 768, height: 1024 })) presenter = pPath;
-    if (presenter) { job.presenterFile = presenter; job.gender = gender; }
-    if (!presenter) {
-      throw new Error("female presenter generation failed; refusing to render without the required left presenter");
-    }
-    cfg.log("  presenter: female (left)");
+    presenter = await installPhotorealisticPresenter(workDir);
+    job.presenterFile = presenter;
+    job.presenterSource = "reviewed-real-camera-photo";
+    cfg.log("  presenter: reviewed photorealistic adult woman (left)");
   }
 
   // Character bible: keep the main characters looking the same across scenes.
