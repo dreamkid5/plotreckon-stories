@@ -13,7 +13,12 @@ import {
   lockNarrationDuration,
   scaleWordTimings
 } from "./render.mjs";
-import { PHOTOREALISTIC_PRESENTER_ASSET } from "./presenter.mjs";
+import {
+  PRESENTER_ASSETS,
+  extractNarratorAge,
+  installAgeMatchedPresenter,
+  selectPresenterForAge
+} from "./presenter.mjs";
 import {
   makeHook,
   THUMBNAIL_HOOK_MAX_WORDS,
@@ -53,10 +58,64 @@ test("caption word timings scale to the locked scene duration", () => {
   ]);
 });
 
-test("production presenter is a reviewed high-resolution portrait asset", async () => {
-  const image = await fs.readFile(PHOTOREALISTIC_PRESENTER_ASSET);
-  assert.ok(image.length >= 100000);
-  assert.deepEqual([...image.subarray(0, 3)], [255, 216, 255]);
+test("narrator age is read from current first-person statements", () => {
+  assert.equal(extractNarratorAge("My name is Rachel. I'm thirty four years old."), 34);
+  assert.equal(extractNarratorAge("I’m fifty-three years old, and this is my story."), 53);
+  assert.equal(extractNarratorAge("The twins are six. I am 42 years old."), 42);
+  assert.equal(extractNarratorAge("I am a 68-year-old woman."), 68);
+  assert.equal(extractNarratorAge("I am 39 and this happened last year."), 39);
+});
+
+test("past and third-person ages cannot choose the presenter", () => {
+  assert.equal(extractNarratorAge("I was twenty five when we met. My husband is 40 years old."), null);
+  assert.equal(extractNarratorAge("My daughter is eighteen years old."), null);
+});
+
+test("adult narrator ages select the matching decade portrait", () => {
+  const expectations = [
+    [18, 20], [29, 20], [30, 30], [39, 30], [40, 40], [49, 40],
+    [50, 50], [59, 50], [60, 60], [69, 60], [70, 70], [79, 70],
+    [80, 80], [89, 80], [90, 90], [99, 90]
+  ];
+  for (const [age, decade] of expectations) {
+    assert.equal(selectPresenterForAge(age).decade, decade);
+  }
+});
+
+test("every age range has a reviewed high-resolution portrait asset", async () => {
+  assert.deepEqual(
+    Object.keys(PRESENTER_ASSETS),
+    ["20", "30", "40", "50", "60", "70", "80", "90"]
+  );
+  for (const imagePath of Object.values(PRESENTER_ASSETS)) {
+    const image = await fs.readFile(imagePath);
+    assert.ok(image.length >= 100000, imagePath);
+    assert.deepEqual([...image.subarray(0, 3)], [255, 216, 255], imagePath);
+  }
+});
+
+test("render refuses to guess when the narrator's current age is missing", async () => {
+  await withTempDir(async (dir) => {
+    await assert.rejects(
+      installAgeMatchedPresenter({ script: "I was twenty five when we met." }, dir),
+      /narrator age is not stated/
+    );
+  });
+});
+
+test("render installs the selected age portrait for video and thumbnail reuse", async () => {
+  await withTempDir(async (dir) => {
+    const selected = await installAgeMatchedPresenter(
+      { script: "My children are seven years old. I am fifty three years old." },
+      dir
+    );
+    assert.equal(selected.age, 53);
+    assert.equal(selected.label, "50s");
+    assert.deepEqual(
+      await fs.readFile(selected.path),
+      await fs.readFile(PRESENTER_ASSETS[50])
+    );
+  });
 });
 
 test("thumbnail hook stays wordy and preserves the catchy opening", () => {

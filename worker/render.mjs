@@ -9,7 +9,7 @@ import { splitScript, buildPrompt } from "./csv.mjs";
 import { buildCharacterBible, sceneCharacterNote } from "./characters.mjs";
 import { buildSceneVisuals } from "./visuals.mjs";
 import { buildThumbnail } from "./thumbnail.mjs";
-import { installPhotorealisticPresenter } from "./presenter.mjs";
+import { installAgeMatchedPresenter } from "./presenter.mjs";
 import {
   LOCKED_VOICE,
   LOCKED_VOICE_PITCH,
@@ -509,17 +509,23 @@ export async function renderJob(job, cfg, workDir, outFile) {
     cfg.log("  over " + HD_MAX_MIN + " min: rendering at 720p so it finishes safely");
   }
 
-  // Storytime mode: a fixed female presenter portrait on the left of every scene, plus
-  // karaoke captions burned on. Only for the "story" style; other styles render full-frame.
+  // Storytime mode: an age-matched female presenter portrait on the left of every
+  // scene, plus karaoke captions burned on.
   const storyMode = true;
   let presenter = null;
   if (storyMode) {
     const gender = "female";
     job.gender = gender;
-    presenter = await installPhotorealisticPresenter(workDir);
+    const presenterMatch = await installAgeMatchedPresenter(job, workDir);
+    presenter = presenterMatch.path;
     job.presenterFile = presenter;
-    job.presenterSource = "reviewed-real-camera-photo";
-    cfg.log("  presenter: reviewed photorealistic adult woman (left)");
+    job.presenterAge = presenterMatch.age;
+    job.presenterAgeBucket = presenterMatch.label;
+    job.presenterSource = "reviewed-real-camera-photo-age-matched";
+    cfg.log(
+      "  presenter: reviewed photorealistic woman, age " + presenterMatch.age +
+      " (" + presenterMatch.label + " portrait, left)"
+    );
   }
 
   // Character bible: keep the main characters looking the same across scenes.

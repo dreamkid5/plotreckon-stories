@@ -2,7 +2,7 @@
 
 A YouTube storytime automation suite built with Astro. Add a script and PlotReckon
 Stories renders a modern photorealistic video with the locked **Ava female voice**,
-a female presenter on the left, matching story scenes on the right, highlighted
+a realistic female presenter whose age matches the narrator on the left, matching story scenes on the right, highlighted
 captions, and a hook thumbnail that reuses the same female presenter.
 Every production scene is locked to exactly 5.5 seconds; Ava audio and caption
 timings are fitted to that window and invalid scene durations fail the render.
@@ -67,8 +67,11 @@ The Thumbnail Studio calls a keyless image model. Requests pass through a same o
 
 PlotReckon Stories permanently uses `en-US-AvaMultilingualNeural`, the Ava female
 Storytime voice, for every production script. The worker ignores CSV voice fields
-and provider/voice environment overrides. Every video generates a female presenter
-for the left side and reuses that exact portrait on its thumbnail. Narration runs on
+and provider/voice environment overrides. Every script must state the narrator's
+current age in first person, such as `I'm thirty four years old`. The renderer selects
+a reviewed, realistic female portrait from the matching adult age range for the left
+side and reuses that exact portrait on its thumbnail. It stops instead of guessing if
+the narrator's age is missing. Narration runs on
 **`edge-tts`** with no API key, account, card, or per-video fee. One-time local setup
 is `pip install edge-tts`; GitHub Actions installs it automatically. Full details:
 [worker/SETUP-VOICE.md](worker/SETUP-VOICE.md).
