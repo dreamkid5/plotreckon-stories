@@ -58,7 +58,10 @@ export function extractNarratorAge(script) {
   // as "I was twenty five" and other characters' ages must not choose the portrait.
   const statedAge = /\bi\s*(?:am|'m)\s+(?:a\s+)?(\d{1,3}|[a-z]+(?:[\s-]+[a-z]+)?)\s*(?:-\s*)?years?\s*(?:-\s*)?old\b/i.exec(text);
   const shortNumericAge = /\bi\s*(?:am|'m)\s+(\d{2})\b/i.exec(text);
-  const rawAge = statedAge?.[1] ?? shortNumericAge?.[1];
+  // Same as shortNumericAge but for ages written as words ("I am thirty eight"),
+  // constrained to real number words so "I am a nurse" cannot be misread as an age.
+  const shortWordAge = /\bi\s*(?:am|'m)\s+((?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine))?|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/i.exec(text);
+  const rawAge = statedAge?.[1] ?? shortNumericAge?.[1] ?? shortWordAge?.[1];
   const age = parseAgeValue(rawAge);
   return Number.isInteger(age) && age >= 18 && age <= 99 ? age : null;
 }

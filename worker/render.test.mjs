@@ -64,6 +64,8 @@ test("narrator age is read from current first-person statements", () => {
   assert.equal(extractNarratorAge("The twins are six. I am 42 years old."), 42);
   assert.equal(extractNarratorAge("I am a 68-year-old woman."), 68);
   assert.equal(extractNarratorAge("I am 39 and this happened last year."), 39);
+  assert.equal(extractNarratorAge("It has been two years now. I am thirty eight."), 38);
+  assert.equal(extractNarratorAge("I'm forty now, and the kids are grown."), 40);
 });
 
 test("past and third-person ages cannot choose the presenter", () => {
