@@ -61,7 +61,12 @@ export function extractNarratorAge(script) {
   // Same as shortNumericAge but for ages written as words ("I am thirty eight"),
   // constrained to real number words so "I am a nurse" cannot be misread as an age.
   const shortWordAge = /\bi\s*(?:am|'m)\s+((?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine))?|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/i.exec(text);
-  const rawAge = statedAge?.[1] ?? shortNumericAge?.[1] ?? shortWordAge?.[1];
+  // Past-tense fallback ("I was thirty six years old") for scripts that only give a
+  // recollected age. It is used only when no present-tense age is found, and it
+  // requires "years old" so casual asides like "I was twenty five when we met" are
+  // not mistaken for a deliberate age statement.
+  const pastStatedAge = /\bi\s+was\s+(?:a\s+)?(\d{1,3}|[a-z]+(?:[\s-]+[a-z]+)?)\s*(?:-\s*)?years?\s*(?:-\s*)?old\b/i.exec(text);
+  const rawAge = statedAge?.[1] ?? shortNumericAge?.[1] ?? shortWordAge?.[1] ?? pastStatedAge?.[1];
   const age = parseAgeValue(rawAge);
   return Number.isInteger(age) && age >= 18 && age <= 99 ? age : null;
 }

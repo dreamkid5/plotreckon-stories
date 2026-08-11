@@ -68,9 +68,20 @@ test("narrator age is read from current first-person statements", () => {
   assert.equal(extractNarratorAge("I'm forty now, and the kids are grown."), 40);
 });
 
-test("past and third-person ages cannot choose the presenter", () => {
+test("third-person and casual past mentions cannot choose the presenter", () => {
   assert.equal(extractNarratorAge("I was twenty five when we met. My husband is 40 years old."), null);
   assert.equal(extractNarratorAge("My daughter is eighteen years old."), null);
+});
+
+test("present-tense age wins; a stated past age is only a fallback", () => {
+  // Present tense always chosen, even when a past age is mentioned first.
+  assert.equal(
+    extractNarratorAge("I was twenty five years old when we married. I am thirty eight years old."),
+    38
+  );
+  // Falls back to a deliberate past age when no present-tense age is given.
+  assert.equal(extractNarratorAge("I was thirty six years old that October."), 36);
+  assert.equal(extractNarratorAge("Back then I was 42 years old."), 42);
 });
 
 test("adult narrator ages select the matching decade portrait", () => {
