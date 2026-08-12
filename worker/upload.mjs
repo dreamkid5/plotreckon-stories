@@ -89,9 +89,12 @@ async function findExistingUpload(token, title) {
       const j = await r.json();
       for (const it of (j.items || [])) {
         const t = norm(it.snippet && it.snippet.title);
-        // exact match, or the video title still contains the original title
-        // (covers your edits like new capitals or an appended subtitle)
-        if (t && (t === want || t.includes(want))) {
+        // Exact normalized match only. A loose "contains" check would skip a
+        // brand-new video whose title happens to be a substring of an existing,
+        // DIFFERENT video (very possible with this channel's long, similar
+        // titles), and the rule here is that a rare duplicate beats a missed
+        // upload. Renames stay covered by the script->id ledger (Layer 1).
+        if (t && t === want) {
           return (it.snippet.resourceId && it.snippet.resourceId.videoId) || null;
         }
       }

@@ -107,6 +107,11 @@ export function buildPrompt(scene, style) {
   return scene + ", " + (styleKeywords[style] || styleKeywords.watercolor);
 }
 
+// A stable, file-name based key (used for output filenames and the upload
+// ledger). Truncating too aggressively lets two different long titles that share
+// an opening collapse to the SAME key, which would make the upload ledger treat a
+// brand-new video as "already uploaded" and silently skip it. 100 chars matches
+// YouTube's own title limit, so distinct titles stay distinct.
 export function slug(s) {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "video";
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 100) || "video";
 }
