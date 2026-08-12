@@ -229,8 +229,14 @@ async function processCSV(file, processed) {
   } else {
     log("  kept " + file.name + " to retry next run (a step failed)");
   }
-  processed.add(file.key);
-  await saveProcessed(processed);
+  // Only remember this file+timestamp as processed when it did NOT fail. A
+  // transient failure (a flaky image service, an expired upload token) then gets
+  // retried on the next run instead of being skipped until the file is edited:
+  // the script stays in the content folder AND out of the processed set.
+  if (fileOk) {
+    processed.add(file.key);
+    await saveProcessed(processed);
+  }
   log("finished " + file.name);
 }
 

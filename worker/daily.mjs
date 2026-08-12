@@ -10,6 +10,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+// Absolute path to this folder, so the worker can be spawned no matter which
+// directory daily.mjs was launched from.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // Load worker/.env if present, so keys live in one file.
 try { process.loadEnvFile(); } catch (e) { /* no .env, that is fine */ }
@@ -47,7 +52,7 @@ async function runDaily() {
   // 2. run the worker once, passing through all env such as the voice key
   log("rendering the day's batch");
   await new Promise((resolve) => {
-    const child = spawn(process.execPath, ["watch.mjs", "--once"], { stdio: "inherit", env: process.env, cwd: process.cwd() });
+    const child = spawn(process.execPath, [path.join(HERE, "watch.mjs"), "--once"], { stdio: "inherit", env: process.env, cwd: process.cwd() });
     child.on("close", () => resolve());
     child.on("error", (e) => { log("worker error: " + e.message); resolve(); });
   });
