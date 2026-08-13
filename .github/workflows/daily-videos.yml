@@ -8,6 +8,13 @@ on:
       - "worker/**"
       - ".github/workflows/daily-videos.yml"
   workflow_dispatch:
+  # Automatic daily runs. Each run renders one queued script from content/*.txt
+  # (a single video takes ~3-4.5h and a GitHub job is capped at 6h, so it is one
+  # per run) and leaves the rest for the next run. Four runs a day, spaced 6h
+  # apart so they never overlap, drain a queue of 3+ scripts every day. Times are
+  # UTC and offset from the hour, which GitHub schedules more reliably.
+  schedule:
+    - cron: "15 3,9,15,21 * * *"
 
 permissions:
   contents: write
@@ -56,7 +63,12 @@ jobs:
           CF_SCENE_SECONDS: "5.5"
           CF_SEO: "0"
           CF_THUMBNAILS: "1"
-          CF_TIME_BUDGET_MIN: "330"
+          # Stop STARTING a new video after 80 min. A single video can take up to
+          # ~4.5h and the job is killed at 6h, so a video started later than this
+          # might not finish; better to leave it for the next scheduled run than
+          # waste hours on a render that gets killed. The first video always starts
+          # at 0 min, so every run still completes at least one.
+          CF_TIME_BUDGET_MIN: "80"
         run: node worker/watch.mjs --once
 
       - name: Archive successfully processed scripts
