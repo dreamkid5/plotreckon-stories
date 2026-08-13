@@ -107,26 +107,29 @@ test("every age range has a reviewed high-resolution portrait asset", async () =
   }
 });
 
-test("render refuses to guess when the narrator's current age is missing", async () => {
+test("presenter installs the fixed host even when no age is stated", async () => {
   await withTempDir(async (dir) => {
-    await assert.rejects(
-      installAgeMatchedPresenter({ script: "I was twenty five when we met." }, dir),
-      /narrator age is not stated/
+    const selected = await installAgeMatchedPresenter({ script: "I was twenty five when we met." }, dir);
+    assert.equal(selected.label, "fixed host");
+    assert.deepEqual(
+      await fs.readFile(selected.path),
+      await fs.readFile(PRESENTER_ASSETS[30])
     );
   });
 });
 
-test("render installs the selected age portrait for video and thumbnail reuse", async () => {
+test("the same fixed presenter is installed regardless of the stated age", async () => {
   await withTempDir(async (dir) => {
     const selected = await installAgeMatchedPresenter(
       { script: "My children are seven years old. I am fifty three years old." },
       dir
     );
+    // The age is still parsed (kept as a label) but no longer picks the portrait.
     assert.equal(selected.age, 53);
-    assert.equal(selected.label, "50s");
+    assert.equal(selected.label, "fixed host");
     assert.deepEqual(
       await fs.readFile(selected.path),
-      await fs.readFile(PRESENTER_ASSETS[50])
+      await fs.readFile(PRESENTER_ASSETS[30])
     );
   });
 });

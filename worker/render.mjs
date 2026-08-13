@@ -603,11 +603,8 @@ export async function renderJob(job, cfg, workDir, outFile) {
     job.presenterFile = presenter;
     job.presenterAge = presenterMatch.age;
     job.presenterAgeBucket = presenterMatch.label;
-    job.presenterSource = "reviewed-real-camera-photo-age-matched";
-    cfg.log(
-      "  presenter: reviewed photorealistic woman, age " + presenterMatch.age +
-      " (" + presenterMatch.label + " portrait, left)"
-    );
+    job.presenterSource = "reviewed-real-camera-photo-fixed-host";
+    cfg.log("  presenter: the fixed reviewed host (same woman in every video)");
   }
 
   const results = new Array(scenes.length).fill(null);

@@ -85,22 +85,20 @@ export function selectPresenterForAge(age) {
   };
 }
 
+// Production locks the presenter to ONE reviewed portrait so the channel keeps a
+// single consistent host in every video, regardless of the age a script states.
+// (The age-matched set stays in PRESENTER_ASSETS / selectPresenterForAge for
+// reference, but is no longer selected automatically.)
+export const LOCKED_PRESENTER = PHOTOREALISTIC_PRESENTER_ASSET;
+
 export async function installAgeMatchedPresenter(job, workDir) {
-  const age = extractNarratorAge(job?.script);
-  if (age == null) {
-    throw new Error(
-      "narrator age is not stated: add a current-age sentence such as " +
-      "\"I am 34 years old\" so the presenter can match the script"
-    );
-  }
-
-  const selection = selectPresenterForAge(age);
-  const source = await fs.stat(selection.assetPath).catch(() => null);
+  const source = await fs.stat(LOCKED_PRESENTER).catch(() => null);
   if (!source || !source.isFile() || source.size < 100000) {
-    throw new Error(`reviewed photorealistic female presenter asset for ${selection.label} is missing or invalid`);
+    throw new Error("reviewed photorealistic female presenter asset is missing or invalid");
   }
-
   const outPath = path.join(workDir, "presenter.jpg");
-  await fs.copyFile(selection.assetPath, outPath);
-  return { ...selection, path: outPath };
+  await fs.copyFile(LOCKED_PRESENTER, outPath);
+  // A stated age, if present, is kept only as a label; it no longer picks the portrait.
+  const age = extractNarratorAge(job?.script);
+  return { path: outPath, age, label: "fixed host", decade: null, assetPath: LOCKED_PRESENTER };
 }
