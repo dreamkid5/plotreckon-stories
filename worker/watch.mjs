@@ -40,6 +40,11 @@ const cfg = {
   imageToken: process.env.CF_IMAGE_TOKEN || "",
   // Prompt enhancement: nicer first try, but a bit more likely to fail. CF_IMAGE_ENHANCE=0 to disable.
   imageEnhance: process.env.CF_IMAGE_ENHANCE === "0" ? false : true,
+  // Fixed background reused for every scene (a daytime mountain by default), which
+  // the per-scene motion turns into a smooth slow zoom. This skips the slow
+  // per-scene image generation. CF_BACKGROUND=0 restores unique per-scene AI
+  // images; CF_BACKGROUND=/path/to/file.jpg uses a custom background.
+  background: process.env.CF_BACKGROUND || "",
   ttsKey: process.env.TTS_API_KEY || "",
   ttsUrl: process.env.CF_TTS_URL || "https://api.openai.com/v1/audio/speech",
   ttsModel: process.env.CF_TTS_MODEL || "gpt-4o-mini-tts",

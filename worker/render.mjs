@@ -18,7 +18,26 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FONTS_DIR = path.join(HERE, "assets", "fonts");
+const BACKGROUNDS_DIR = path.join(HERE, "assets", "backgrounds");
+const DEFAULT_BACKGROUND = path.join(BACKGROUNDS_DIR, "mountains-day.jpg");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Resolve the fixed background reused for every scene. On by default (the
+// committed daytime mountain), which the per-scene Ken Burns motion turns into a
+// smooth slow zoom, and which removes the slow per-scene image generation. Set
+// CF_BACKGROUND=0 to go back to a unique AI image per scene; CF_BACKGROUND=/path
+// to point at a different background file.
+async function resolveBackgroundImage(cfg) {
+  const setting = cfg.background;
+  if (setting === "0" || setting === "off" || setting === "false") return null;
+  const file = (setting && setting !== "1" && setting !== "on") ? setting : DEFAULT_BACKGROUND;
+  const st = await fs.stat(file).catch(() => null);
+  if (st && st.isFile() && st.size > 1000) return file;
+  // A configured/default background that is missing should not fail the whole
+  // render; fall back to per-scene images instead.
+  cfg.log("  background image not found (" + file + "), falling back to per-scene images");
+  return null;
+}
 
 // Production timing is a hard contract. Environment variables and narration
 // length must never change the 5.5-second cadence.
@@ -280,39 +299,95 @@ function presenterKenBurns(dur, cfg, idx, W, H) {
     "scale=w='" + W + "*" + z + "':h='" + H + "*" + z + "':eval=frame,crop=" + W + ":" + H + ",setsar=1";
 }
 
-// A storytime scene clip: a presenter portrait on the LEFT (with subtle camera motion),
-// the scene photo on the RIGHT (with gentle motion), this scene's narration, and karaoke
-// captions burned on top that highlight each word as it is spoken. presenter and assPath
-// are optional; without a presenter it falls back to a full-frame image.
-function sceneClipComposite(presenter, story, audioPath, assPath, outPath, dur, cfg, idx = 0) {
+// Layout fractions for the storytime composite: a full-screen background, the
+// presenter in a bordered box bottom-right, and the karaoke caption centred in the
+// area to the left of that box.
+const BOX_W_FRAC = 0.34;         // presenter box width, fraction of the frame
+const BOX_H_FRAC = 0.52;         // presenter box height
+const BOX_MARGIN_FRAC = 0.022;   // gap from the frame edges
+const CAPTION_CX_FRAC = (1 - BOX_W_FRAC - BOX_MARGIN_FRAC) / 2; // centre of the area left of the box
+const CAPTION_Y_FRAC = 0.82;
+
+// A storytime scene clip in the "reaction" layout: the background photo fills the
+// whole frame with a slow zoom, the age-matched presenter sits in a white-bordered
+// box in the bottom-right, a live waveform reacts to the narration on the left, a
+// SUBSCRIBE badge sits top-left, and karaoke captions burn in along the bottom.
+// presenter and assPath are optional; without a presenter it is a full-frame photo.
+async function sceneClipComposite(presenter, story, audioPath, assPath, outPath, dur, cfg, idx = 0) {
   const crf = String(Number(cfg.crf) || 20);
   const W = Number(cfg.width) || 1920, H = Number(cfg.height) || 1080;
-  const Pw = Math.round(W * (Number(cfg.presenterFrac) || 0.38)); // presenter panel width
-  const Sw = W - Pw;                                              // story panel width
-  const args = ["-y"];
   const useComposite = !!presenter;
-  if (useComposite) args.push("-loop", "1", "-t", String(dur), "-i", presenter);
-  args.push("-loop", "1", "-t", String(dur), "-i", story);
-  const audioIdx = useComposite ? 2 : 1;
-  if (audioPath) args.push("-i", audioPath);
-  else args.push("-f", "lavfi", "-t", String(dur), "-i", "anullsrc=channel_layout=mono:sample_rate=24000");
 
-  const subs = assPath ? ",subtitles='" + ffEscapePath(assPath) + "':fontsdir='" + ffEscapePath(FONTS_DIR) + "'" : "";
-  let filter;
-  if (useComposite) {
-    filter =
-      "[0:v]" + presenterKenBurns(dur, cfg, idx, Pw, H) + "[L];" +
-      "[1:v]" + kenBurnsVfSize(dur, cfg, idx, Sw, H) + "[R];" +
-      "[L][R]hstack=inputs=2,format=yuv420p" + subs + "[v]";
-  } else {
-    filter = "[1:v]" + kenBurnsVf(dur, cfg, idx) + ",format=yuv420p" + subs + "[v]";
+  const inputs = ["-y"];
+  if (useComposite) inputs.push("-loop", "1", "-t", String(dur), "-i", presenter);
+  inputs.push("-loop", "1", "-t", String(dur), "-i", story);
+  const audioIdx = useComposite ? 2 : 1;
+  if (audioPath) inputs.push("-i", audioPath);
+  else inputs.push("-f", "lavfi", "-t", String(dur), "-i", "anullsrc=channel_layout=mono:sample_rate=24000");
+
+  const subs = assPath ? "subtitles='" + ffEscapePath(assPath) + "':fontsdir='" + ffEscapePath(FONTS_DIR) + "'" : null;
+  const badgeFont = path.join(FONTS_DIR, "Montserrat-ExtraBold.ttf");
+
+  // Presenter box (bottom-right) and waveform (mid-left) geometry.
+  const bord = Math.max(4, Math.round(W * 0.004));
+  const Pbw = Math.round(W * BOX_W_FRAC), Pbh = Math.round(H * BOX_H_FRAC);
+  const Pbiw = Pbw - 2 * bord, Pbih = Pbh - 2 * bord;
+  const margin = Math.round(W * BOX_MARGIN_FRAC);
+  const X0 = W - Pbw - margin, Y0 = H - Pbh - margin;
+  const Ww = Math.round(W * 0.27), Wh = Math.round(H * 0.11);
+  const Wx = Math.round(W * 0.037), Wy = Math.round(H * 0.42);
+  const badgeSize = Math.round(H * 0.037);
+
+  // The full "reaction" composite. Returns the filtergraph and which stream to map
+  // as audio (the waveform consumes the audio, so it is split first).
+  function fullGraph() {
+    let f = "";
+    if (useComposite) {
+      f += "[1:v]" + kenBurnsVf(dur, cfg, idx) + "[bg];";
+      f += "[0:v]scale=" + Pbiw + ":" + Pbih + ":force_original_aspect_ratio=increase,crop=" + Pbiw + ":" + Pbih +
+        ",pad=" + Pbw + ":" + Pbh + ":" + bord + ":" + bord + ":color=white,setsar=1[pbox];";
+      f += "[bg][pbox]overlay=" + X0 + ":" + Y0 + "[c1];";
+    } else {
+      f += "[1:v]" + kenBurnsVf(dur, cfg, idx) + "[c1];";
+    }
+    f += "[" + audioIdx + ":a]asplit=2[a_out][a_wav];";
+    f += "[a_wav]showwaves=s=" + Ww + "x" + Wh + ":mode=cline:colors=white:rate=30:scale=sqrt,format=rgba,colorkey=0x000000:0.30:0.10[wave];";
+    f += "[c1][wave]overlay=" + Wx + ":" + Wy + "[c2];";
+    f += "[c2]drawtext=fontfile='" + ffEscapePath(badgeFont) + "':text=SUBSCRIBE:fontcolor=white:fontsize=" + badgeSize +
+      ":box=1:boxcolor=0xE01B10:boxborderw=" + Math.round(badgeSize * 0.5) + ":x=" + margin + ":y=" + margin + "[c3];";
+    f += "[c3]" + (subs || "null") + "[v]";
+    return { filter: f, audioMap: "[a_out]" };
   }
-  args.push(
-    "-filter_complex", filter, "-map", "[v]", "-map", audioIdx + ":a:0",
-    "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", crf, "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "160k", "-ar", "24000", "-ac", "1", "-t", String(dur), outPath
-  );
-  return run(cfg.ffmpeg, args);
+  // Fallback used only if the full graph errors, so a scene never fails outright:
+  // background + presenter box + captions, no waveform or badge.
+  function simpleGraph() {
+    let f = "";
+    if (useComposite) {
+      f += "[1:v]" + kenBurnsVf(dur, cfg, idx) + "[bg];";
+      f += "[0:v]scale=" + Pbiw + ":" + Pbih + ":force_original_aspect_ratio=increase,crop=" + Pbiw + ":" + Pbih +
+        ",pad=" + Pbw + ":" + Pbh + ":" + bord + ":" + bord + ":color=white,setsar=1[pbox];";
+      f += "[bg][pbox]overlay=" + X0 + ":" + Y0 + (subs ? "," + subs : "") + "[v]";
+    } else {
+      f += "[1:v]" + kenBurnsVf(dur, cfg, idx) + (subs ? "," + subs : "") + "[v]";
+    }
+    return { filter: f, audioMap: audioIdx + ":a:0" };
+  }
+
+  function build(graph) {
+    const g = graph();
+    return inputs.concat([
+      "-filter_complex", g.filter, "-map", "[v]", "-map", g.audioMap,
+      "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", crf, "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k", "-ar", "24000", "-ac", "1", "-t", String(dur), outPath
+    ]);
+  }
+
+  try {
+    await run(cfg.ffmpeg, build(fullGraph));
+  } catch (e) {
+    cfg.log("  scene composite fell back to the simple layout (" + String(e.message).slice(0, 80) + ")");
+    await run(cfg.ffmpeg, build(simpleGraph));
+  }
 }
 
 // Generate the per-scene ASS caption file from that scene's word timings.
@@ -325,7 +400,9 @@ async function buildSceneCaptions(wordsFile, assPath, cfg) {
     path.join(FONTS_DIR, cfg.capFontFile || "Montserrat-ExtraBold.ttf"),
     cfg.capFontName || "Montserrat ExtraBold",
     String(fontSize), cfg.capHighlight || "#6A12C0",
-    String(Number(cfg.capMaxWords) || 4), String(Number(cfg.capYFrac) || 0.72)
+    String(Number(cfg.capMaxWords) || 4),
+    String(Number(cfg.capYFrac) || CAPTION_Y_FRAC),
+    String(Number(cfg.capCxFrac) || CAPTION_CX_FRAC)
   ]);
 }
 
@@ -528,59 +605,69 @@ export async function renderJob(job, cfg, workDir, outFile) {
     );
   }
 
-  // Character bible: keep the main characters looking the same across scenes.
-  let bible = null;
-  if (cfg.anthropicKey && cfg.characters !== false) {
-    bible = await buildCharacterBible(job.script, cfg);
-    if (bible && bible.characters.length) cfg.log("  character bible: " + bible.characters.map((c) => c.name).join(", "));
-  }
-
-  // Scene matching: turn each stretch of narration into a concrete VISUAL prompt so
-  // the image matches the meaning, not the literal words. Falls back to raw text.
-  let visuals = null;
-  if (cfg.anthropicKey && cfg.sceneVisuals !== false) {
-    visuals = await buildSceneVisuals(scenes, bible, cfg);
-    if (visuals) cfg.log("  scene matching: on (" + visuals.filter(Boolean).length + "/" + scenes.length + " scenes visualized)");
-  }
-  // Build each scene's image prompt first (sequentially, so the character carry
-  // forward stays correct), then fetch the images several at a time for speed.
-  const charState = { active: null };
-  const prompts = scenes.map((s, i) =>
-    (visuals && visuals[i]) ? visuals[i] : (s + sceneCharacterNote(s, bible, charState)));
-
   const results = new Array(scenes.length).fill(null);
-  const CONC = Math.max(1, Number(process.env.CF_IMG_CONCURRENCY || 2));
-  let next = 0, done = 0;
-  async function imgWorker() {
-    while (true) {
-      const i = next++;
-      if (i >= scenes.length) return;
-      const p = path.join(workDir, "img" + i + ".jpg");
-      if (await fetchImage(buildPrompt(prompts[i], style), 3000 + i * 7, p, cfg)) results[i] = p;
-      done++;
-      if (done % 20 === 0 || done === scenes.length) cfg.log("  images " + done + "/" + scenes.length);
+  const bgImage = await resolveBackgroundImage(cfg);
+  if (bgImage) {
+    // Fixed-background mode: every scene reuses ONE image, which the per-scene Ken
+    // Burns motion turns into a smooth continuous slow zoom. This skips all
+    // per-scene image generation (the main render bottleneck) and the Claude
+    // character/scene-matching calls that only exist to make those images fit.
+    results.fill(bgImage);
+    cfg.log("  fixed background: " + path.basename(bgImage) + " reused for all " + scenes.length + " scenes (no per-scene image generation)");
+  } else {
+    // Character bible: keep the main characters looking the same across scenes.
+    let bible = null;
+    if (cfg.anthropicKey && cfg.characters !== false) {
+      bible = await buildCharacterBible(job.script, cfg);
+      if (bible && bible.characters.length) cfg.log("  character bible: " + bible.characters.map((c) => c.name).join(", "));
     }
-  }
-  await Promise.all(Array.from({ length: Math.min(CONC, scenes.length) }, imgWorker));
 
-  // Regeneration pass: any scene whose image failed is generated fresh, with a NEW
-  // seed each time (never a reused neighbour). Runs one at a time to be gentle on the
-  // image service; later rounds fall back to 720p, which it almost never refuses, so
-  // every scene ends up with its OWN generated picture.
-  const repairRounds = Number(process.env.CF_IMG_REPAIR_ROUNDS || 8);
-  for (let round = 1; round <= repairRounds; round++) {
-    const missing = [];
-    for (let i = 0; i < scenes.length; i++) if (!results[i]) missing.push(i);
-    if (!missing.length) break;
-    // After the first couple of rounds, drop to 720p, which the service almost never
-    // refuses, so stragglers still get their own freshly generated picture quickly.
-    const lowRes = round > 2 ? { width: 1280, height: 720 } : {};
-    cfg.log("  regenerating " + missing.length + " image(s) (round " + round + (round > 2 ? ", 720p" : "") + ")");
-    for (const i of missing) {
-      const p = path.join(workDir, "img" + i + ".jpg");
-      const seed = 500000 + i * 131 + round * 91193;
-      // retries skip enhance for reliability
-      if (await fetchImage(buildPrompt(prompts[i], style), seed, p, cfg, { ...lowRes, attempts: 4, enhance: false })) results[i] = p;
+    // Scene matching: turn each stretch of narration into a concrete VISUAL prompt so
+    // the image matches the meaning, not the literal words. Falls back to raw text.
+    let visuals = null;
+    if (cfg.anthropicKey && cfg.sceneVisuals !== false) {
+      visuals = await buildSceneVisuals(scenes, bible, cfg);
+      if (visuals) cfg.log("  scene matching: on (" + visuals.filter(Boolean).length + "/" + scenes.length + " scenes visualized)");
+    }
+    // Build each scene's image prompt first (sequentially, so the character carry
+    // forward stays correct), then fetch the images several at a time for speed.
+    const charState = { active: null };
+    const prompts = scenes.map((s, i) =>
+      (visuals && visuals[i]) ? visuals[i] : (s + sceneCharacterNote(s, bible, charState)));
+
+    const CONC = Math.max(1, Number(process.env.CF_IMG_CONCURRENCY || 2));
+    let next = 0, done = 0;
+    async function imgWorker() {
+      while (true) {
+        const i = next++;
+        if (i >= scenes.length) return;
+        const p = path.join(workDir, "img" + i + ".jpg");
+        if (await fetchImage(buildPrompt(prompts[i], style), 3000 + i * 7, p, cfg)) results[i] = p;
+        done++;
+        if (done % 20 === 0 || done === scenes.length) cfg.log("  images " + done + "/" + scenes.length);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONC, scenes.length) }, imgWorker));
+
+    // Regeneration pass: any scene whose image failed is generated fresh, with a NEW
+    // seed each time (never a reused neighbour). Runs one at a time to be gentle on the
+    // image service; later rounds fall back to 720p, which it almost never refuses, so
+    // every scene ends up with its OWN generated picture.
+    const repairRounds = Number(process.env.CF_IMG_REPAIR_ROUNDS || 8);
+    for (let round = 1; round <= repairRounds; round++) {
+      const missing = [];
+      for (let i = 0; i < scenes.length; i++) if (!results[i]) missing.push(i);
+      if (!missing.length) break;
+      // After the first couple of rounds, drop to 720p, which the service almost never
+      // refuses, so stragglers still get their own freshly generated picture quickly.
+      const lowRes = round > 2 ? { width: 1280, height: 720 } : {};
+      cfg.log("  regenerating " + missing.length + " image(s) (round " + round + (round > 2 ? ", 720p" : "") + ")");
+      for (const i of missing) {
+        const p = path.join(workDir, "img" + i + ".jpg");
+        const seed = 500000 + i * 131 + round * 91193;
+        // retries skip enhance for reliability
+        if (await fetchImage(buildPrompt(prompts[i], style), seed, p, cfg, { ...lowRes, attempts: 4, enhance: false })) results[i] = p;
+      }
     }
   }
   const imgs = results.filter(Boolean);

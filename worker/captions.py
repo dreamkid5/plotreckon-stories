@@ -44,6 +44,10 @@ def main():
     hi = hex_to_ass(sys.argv[8])
     max_words = int(sys.argv[9]) if len(sys.argv) > 9 else 4
     y_frac = float(sys.argv[10]) if len(sys.argv) > 10 else 0.70
+    # Horizontal centre of the caption as a fraction of the width (default 0.5 =
+    # frame centre). The reaction layout centres it in the area left of the
+    # presenter box instead, so the text never runs under the presenter.
+    cx_frac = float(sys.argv[11]) if len(sys.argv) > 11 else 0.5
 
     words = json.load(open(words_json, encoding="utf-8"))
     words = [w for w in words if str(w.get("w", "")).strip()]
@@ -66,7 +70,7 @@ def main():
     space_w = width_of(" ")
     line_h = int(font_size * 1.15)
     y = int(H * y_frac)
-    cx = W / 2.0
+    cx = W * cx_frac
 
     # group into short phrases (reset on sentence-ending punctuation too)
     phrases, cur = [], []
