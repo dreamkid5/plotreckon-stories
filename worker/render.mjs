@@ -39,8 +39,9 @@ async function resolveBackgroundImage(cfg) {
   return null;
 }
 
-// Production timing is a hard contract. Environment variables and narration
-// length must never change the 5.5-second cadence.
+// Target scene length used only to size the caption / Ken-Burns segments when the
+// script is split. The narration itself plays at its natural speed (see
+// lockNarrationDuration), so a scene's real length follows the voice, not this value.
 export const LOCKED_SCENE_SECONDS = 5.5;
 
 // Escape a file path for use inside the ffmpeg subtitles filter argument.
@@ -113,14 +114,27 @@ async function readWordTimings(file) {
   return words;
 }
 
+// Scene-length guardrails. Narration plays at its NATURAL speed, so a scene runs
+// for as long as the voice naturally takes (plus a short tail for breathing room),
+// clamped to this range. This is what keeps Ava from ever sounding rushed or slowed.
+export const MIN_SCENE_SECONDS = 2.5;
+export const MAX_SCENE_SECONDS = 14;
+const SCENE_TAIL_SECONDS = 0.25;
+
+// Fit a scene's narration WITHOUT changing its speed. Earlier this time-stretched
+// (atempo) the voice to a fixed 5.5s, which sped up wordy scenes (rushed) and slowed
+// sparse ones (draggy). Instead we keep the audio at its natural speed and only pad
+// it with a little trailing silence, so the scene length follows the voice. Word
+// timings stay natural (no rescaling), so captions still line up. Returns the final
+// scene duration in seconds.
 export async function lockNarrationDuration(audioPath, wordsPath, sourceDuration, cfg) {
-  const target = LOCKED_SCENE_SECONDS;
-  const timedPath = audioPath + ".locked.wav";
-  const words = await readWordTimings(wordsPath);
+  const natural = Number(sourceDuration);
+  const base = (Number.isFinite(natural) && natural > 0 ? natural : MIN_SCENE_SECONDS) + SCENE_TAIL_SECONDS;
+  const target = Math.min(MAX_SCENE_SECONDS, Math.max(MIN_SCENE_SECONDS, base));
+  const timedPath = audioPath + ".padded.wav";
   const filters = [
-    ...atempoFiltersForDuration(sourceDuration, target),
-    "apad=pad_dur=" + target,
-    "atrim=duration=" + target
+    "apad=whole_dur=" + target.toFixed(6),
+    "atrim=duration=" + target.toFixed(6)
   ].join(",");
   try {
     await run(cfg.ffmpeg, [
@@ -130,14 +144,11 @@ export async function lockNarrationDuration(audioPath, wordsPath, sourceDuration
       timedPath
     ]);
     const duration = await probeDuration(timedPath, cfg);
-    if (!duration || Math.abs(duration - target) > 0.06) {
-      throw new Error("locked scene audio was " + duration + " seconds instead of " + target);
+    if (!duration || Math.abs(duration - target) > 0.12) {
+      throw new Error("scene audio was " + duration + " seconds instead of " + target);
     }
     await fs.rename(timedPath, audioPath);
-    await fs.writeFile(
-      wordsPath,
-      JSON.stringify(scaleWordTimings(words, sourceDuration, target))
-    );
+    return target;
   } finally {
     await fs.rm(timedPath, { force: true }).catch(() => {});
   }
@@ -699,9 +710,9 @@ export async function renderJob(job, cfg, workDir, outFile) {
           const d = await probeDuration(ap, cfg);
           if (!d) throw new Error("Ava narration duration is invalid for scene " + (i + 1));
           const wordsFile = ap + ".words.json";
-          await lockNarrationDuration(ap, wordsFile, d, cfg);
+          // Natural-speed fit: returns this scene's actual length (voice + short tail).
+          durs[i] = await lockNarrationDuration(ap, wordsFile, d, cfg);
           audios[i] = ap;
-          durs[i] = LOCKED_SCENE_SECONDS;
         }
         td++;
         if (td % 20 === 0 || td === scenes.length) cfg.log("  narration " + td + "/" + scenes.length);
@@ -740,10 +751,10 @@ export async function renderJob(job, cfg, workDir, outFile) {
       }
       const st = await fs.stat(c);
       const clipDuration = await probeDuration(c, cfg);
-      if (!clipDuration || Math.abs(clipDuration - LOCKED_SCENE_SECONDS) > 0.08) {
-        throw new Error("scene " + (i + 1) + " rendered at " + clipDuration + "s instead of " + LOCKED_SCENE_SECONDS + "s");
+      if (!clipDuration || Math.abs(clipDuration - durs[i]) > 0.15) {
+        throw new Error("scene " + (i + 1) + " rendered at " + clipDuration + "s instead of " + durs[i].toFixed(2) + "s");
       }
-      if (st.size > 1000) { clips.push(c); total += LOCKED_SCENE_SECONDS; }
+      if (st.size > 1000) { clips.push(c); total += durs[i]; }
     } catch (e) {
       cfg.log("  scene clip " + (i + 1) + " skipped: " + String(e.message).slice(0, 90));
     }

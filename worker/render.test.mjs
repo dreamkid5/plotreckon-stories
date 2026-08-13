@@ -36,7 +36,7 @@ async function withTempDir(run) {
   try { await run(dir); } finally { await fs.rm(dir, { recursive: true, force: true }); }
 }
 
-test("production scene duration is permanently locked to 5.5 seconds", () => {
+test("scene-length target is 5.5s and the atempo helper stays in ffmpeg's range", () => {
   assert.equal(LOCKED_SCENE_SECONDS, 5.5);
   assert.deepEqual(atempoFiltersForDuration(11, LOCKED_SCENE_SECONDS), [
     "atempo=2.00000000"
@@ -160,30 +160,34 @@ test("thumbnail hook never exceeds the dense reference limit", () => {
   assert.match(hook, /\.\.\.$/);
 });
 
-test("real narration audio is rendered to exactly 5.5 seconds", async () => {
+test("narration keeps its natural speed (padded, never time-stretched)", async () => {
   await withTempDir(async (dir) => {
     const audioPath = path.join(dir, "scene.wav");
     const wordsPath = audioPath + ".words.json";
+    // A 6-second tone stands in for ~6s of natural narration.
     await execFileAsync(bundledFfmpeg, [
-      "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+      "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
       "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", audioPath
     ]);
     await fs.writeFile(wordsPath, JSON.stringify([
-      { w: "locked", t: 1, d: 0.5 }
+      { w: "natural", t: 1, d: 0.5 }
     ]));
 
-    await lockNarrationDuration(audioPath, wordsPath, 2, {
+    const finalDur = await lockNarrationDuration(audioPath, wordsPath, 6, {
       ffmpeg: bundledFfmpeg,
       ffprobe: bundledFfprobe
     });
 
+    // The scene follows the narration length (+ a short tail), NOT a forced 5.5s.
+    assert.ok(Math.abs(finalDur - 6.25) <= 0.05, "expected ~6.25s, got " + finalDur);
     const { stdout } = await execFileAsync(bundledFfprobe, [
       "-v", "error", "-show_entries", "format=duration",
       "-of", "default=nw=1:nk=1", audioPath
     ]);
-    assert.ok(Math.abs(Number(stdout.trim()) - LOCKED_SCENE_SECONDS) <= 0.06);
+    assert.ok(Math.abs(Number(stdout.trim()) - 6.25) <= 0.1, "audio should be ~6.25s, got " + stdout.trim());
+    // Word timings are left at their natural values (no rescaling).
     assert.deepEqual(JSON.parse(await fs.readFile(wordsPath, "utf8")), [
-      { w: "locked", t: 2.75, d: 1.375 }
+      { w: "natural", t: 1, d: 0.5 }
     ]);
   });
 });
