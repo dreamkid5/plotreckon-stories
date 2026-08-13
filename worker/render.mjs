@@ -302,8 +302,9 @@ function presenterKenBurns(dur, cfg, idx, W, H) {
 // Layout fractions for the storytime composite: a full-screen background, the
 // presenter in a bordered box bottom-right, and the karaoke caption centred in the
 // area to the left of that box.
-const BOX_W_FRAC = 0.34;         // presenter box width, fraction of the frame
-const BOX_H_FRAC = 0.52;         // presenter box height
+const BOX_W_FRAC = 0.30;         // presenter box width, fraction of the frame
+const BOX_H_FRAC = 0.60;         // presenter box height (portrait, so a head-and-
+                                 // shoulders portrait fits without cropping the head)
 const BOX_MARGIN_FRAC = 0.022;   // gap from the frame edges
 const CAPTION_CX_FRAC = (1 - BOX_W_FRAC - BOX_MARGIN_FRAC) / 2; // centre of the area left of the box
 const CAPTION_Y_FRAC = 0.82;
@@ -344,7 +345,9 @@ async function sceneClipComposite(presenter, story, audioPath, assPath, outPath,
     let f = "";
     if (useComposite) {
       f += "[1:v]" + kenBurnsVf(dur, cfg, idx) + "[bg];";
-      f += "[0:v]scale=" + Pbiw + ":" + Pbih + ":force_original_aspect_ratio=increase,crop=" + Pbiw + ":" + Pbih +
+      // Crop from the TOP (y=0), not the centre, so a tall head-to-torso portrait
+      // keeps the whole head (with headroom) and is trimmed at the chest instead.
+      f += "[0:v]scale=" + Pbiw + ":" + Pbih + ":force_original_aspect_ratio=increase,crop=" + Pbiw + ":" + Pbih + ":(iw-" + Pbiw + ")/2:0" +
         ",pad=" + Pbw + ":" + Pbh + ":" + bord + ":" + bord + ":color=white,setsar=1[pbox];";
       f += "[bg][pbox]overlay=" + X0 + ":" + Y0 + "[c1];";
     } else {
@@ -364,7 +367,9 @@ async function sceneClipComposite(presenter, story, audioPath, assPath, outPath,
     let f = "";
     if (useComposite) {
       f += "[1:v]" + kenBurnsVf(dur, cfg, idx) + "[bg];";
-      f += "[0:v]scale=" + Pbiw + ":" + Pbih + ":force_original_aspect_ratio=increase,crop=" + Pbiw + ":" + Pbih +
+      // Crop from the TOP (y=0), not the centre, so a tall head-to-torso portrait
+      // keeps the whole head (with headroom) and is trimmed at the chest instead.
+      f += "[0:v]scale=" + Pbiw + ":" + Pbih + ":force_original_aspect_ratio=increase,crop=" + Pbiw + ":" + Pbih + ":(iw-" + Pbiw + ")/2:0" +
         ",pad=" + Pbw + ":" + Pbh + ":" + bord + ":" + bord + ":color=white,setsar=1[pbox];";
       f += "[bg][pbox]overlay=" + X0 + ":" + Y0 + (subs ? "," + subs : "") + "[v]";
     } else {
