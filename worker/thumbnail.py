@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Generate a storytime YouTube thumbnail (1280x720) that matches the reference look:
-the presenter photo on the RIGHT, and the story's hook on the LEFT in bold, uppercase-free
-Montserrat ExtraBold with each clause in a punchy colour (green / gold / red / magenta on
-a clean white background). All free, drawn with Pillow.
+Generate a storytime YouTube thumbnail (1280x720) in the dark editorial style:
+a near-black left panel with a bold uppercase hook (mostly white, the meatiest
+clause in magenta), a bright yellow "kicker" banner along the bottom-left, and the
+presenter photo on the right. All free, drawn with Pillow.
 
 Usage:
   python3 thumbnail.py <portrait_jpg> <hook_text> <out_path> <width> <height> <font_path>
@@ -15,93 +15,33 @@ try:
 except ImportError:
     sys.exit("Pillow not installed. Run: pip install pillow")
 
-# Palette sampled to match the reference thumbnail (readable on a white background).
-GREEN   = (22, 176, 74)
-GOLD    = (214, 150, 0)     # the "yellow" role, but readable on white
-RED     = (224, 27, 16)
-MAGENTA = (206, 24, 178)
-BG      = (255, 255, 255)
-MIDDLE_ACCENTS = [GOLD, MAGENTA, GREEN]
+# Palette sampled to match the reference thumbnail.
+BG      = (12, 12, 14)     # near-black panel
+WHITE   = (255, 255, 255)
+MAGENTA = (232, 33, 143)   # the emphasised clause
+YELLOW  = (247, 202, 24)   # the kicker banner
+BLACK   = (10, 10, 10)     # kicker text on yellow
 
 
-def segment(text):
-    """Split the hook into clauses, keeping quoted spans ("...") whole."""
-    segs = []
-    for part in re.split(r'(\"[^\"]*\"|“[^”]*”)', text):
-        if not part:
-            continue
-        if part[0] in '"“':
-            segs.append(("quote", part.strip()))
-        else:
-            for clause in re.split(r'(?<=[,.!?—-])\s+', part.strip()):
-                clause = clause.strip()
-                if clause:
-                    segs.append(("plain", clause))
-    return segs
-
-
-def chunk(segs, size=4):
-    """Break clauses into <=size-word pieces so even a single unpunctuated sentence
-    gets several colour groups (avoids leaving a lone trailing word)."""
-    out = []
-    for kind, seg in segs:
-        words = seg.split()
-        i = 0
-        while i < len(words):
-            n = size
-            if len(words) - i == size + 1:  # don't strand a single word
-                n = size - 1
-            out.append((kind, " ".join(words[i:i + n])))
-            i += n
-    return out
-
-
-def colourise(segs):
-    """Match the reference palette and sequence: opening hook in green, quoted
-    speech in magenta, middle/twist clauses in gold or another bright accent, and
-    the final payoff in red. Never insert black-filled groups; black is outline only.
-    If there are too few clauses, colour short word-groups instead."""
-    if len(segs) < 4:
-        segs = chunk(segs, 4)
-    out, middle_i = [], 0
-    for i, (kind, seg) in enumerate(segs):
-        is_last = (i == len(segs) - 1)
-        has_money = bool(re.search(r"[$€£]|\d", seg))
-        if has_money or is_last:
-            colour = RED
-        elif kind == "quote":
-            colour = MAGENTA
-        elif i == 0:
-            colour = GREEN
-        elif i > 0 and segs[i - 1][0] == "quote":
-            colour = GOLD
-        else:
-            colour = MIDDLE_ACCENTS[middle_i % len(MIDDLE_ACCENTS)]
-            middle_i += 1
-        out.append((seg, colour))
-    return out
-
-
-def flatten_words(coloured):
-    words = []
-    for seg, colour in coloured:
-        for w in seg.split():
-            words.append((w, colour))
-    return words
+def clauses(text):
+    """Split the hook into clause-level pieces at sentence enders and commas."""
+    text = re.sub(r"\s+", " ", text).strip()
+    parts = re.split(r'(?<=[.!?,;:…])\s+', text)
+    return [p.strip() for p in parts if p.strip()]
 
 
 def wrap(words, font, max_w):
-    """Greedy word-wrap into lines of (word, colour), each line width <= max_w."""
+    """Greedy word-wrap a list of (word, colour) into lines that fit max_w."""
     lines, cur, cur_w = [], [], 0
     space = font.getlength(" ")
-    for w, colour in words:
+    for w, col in words:
         ww = font.getlength(w)
         add = ww if not cur else cur_w + space + ww
         if cur and add > max_w:
             lines.append(cur)
-            cur, cur_w = [(w, colour)], ww
+            cur, cur_w = [(w, col)], ww
         else:
-            cur.append((w, colour))
+            cur.append((w, col))
             cur_w = add
     if cur:
         lines.append(cur)
@@ -116,19 +56,17 @@ def main():
 
     canvas = Image.new("RGB", (W, H), BG)
 
-    # --- presenter on the right, cover-cropped, with a feathered left edge ---
-    panel_w = int(W * 0.42)
+    # --- presenter on the right, cover-cropped from the top so the head is kept ---
+    panel_w = int(W * 0.40)
     try:
         p = Image.open(portrait).convert("RGB")
         pw, ph = p.size
         scale = max(panel_w / pw, H / ph)
         p = p.resize((int(pw * scale), int(ph * scale)), Image.LANCZOS)
-        # centre-crop to the panel
         left = (p.width - panel_w) // 2
-        top = (p.height - H) // 2
-        p = p.crop((left, top, left + panel_w, top + H))
-        # feather the leftmost slice so the photo melts into the white text area
-        feather = int(panel_w * 0.28)
+        p = p.crop((left, 0, left + panel_w, H))
+        # feather the leftmost slice so the photo melts into the dark panel
+        feather = int(panel_w * 0.22)
         mask = Image.new("L", (panel_w, H), 255)
         mpx = mask.load()
         for x in range(feather):
@@ -140,42 +78,67 @@ def main():
         sys.stderr.write("thumbnail: portrait skipped (%s)\n" % e)
 
     draw = ImageDraw.Draw(canvas)
-    words = flatten_words(colourise(segment(hook)))
+    cls = clauses(hook)
+    if not cls:
+        canvas.save(out_path, quality=92)
+        return
 
-    # --- auto-fit the hook into the left text area ---
-    pad_x, pad_top, pad_bot = 46, 46, 46
-    area_w = int(W * 0.60) - pad_x
-    area_h = H - pad_top - pad_bot
-    size = int(H * 0.11)
-    while size >= 22:
+    # The last clause becomes the yellow kicker banner (kept short and punchy). The
+    # single meatiest of the remaining clauses is drawn in magenta; the rest white.
+    kicker = cls[-1]
+    kwords = kicker.split()
+    if len(kwords) > 6:
+        kicker = " ".join(kwords[-6:])
+    main_cls = cls[:-1] if len(cls) > 1 else cls
+    magenta_idx = max(range(len(main_cls)), key=lambda i: len(main_cls[i])) if main_cls else -1
+
+    words = []
+    for i, c in enumerate(main_cls):
+        colour = MAGENTA if i == magenta_idx else WHITE
+        for w in c.split():
+            words.append((w.upper(), colour))
+
+    pad = int(W * 0.03)
+    text_w = W - panel_w - pad - int(W * 0.02)   # left of the presenter
+    banner_h = int(H * 0.17)
+    top_h = H - banner_h - pad
+
+    # --- auto-fit the main hook into the area above the banner ---
+    size = int(H * 0.115)
+    while size >= 24:
         font = ImageFont.truetype(font_path, size)
-        lines = wrap(words, font, area_w)
-        line_h = int(size * 1.16)
-        if len(lines) * line_h <= area_h and all(
-            sum(font.getlength(w) for w, _ in ln) + font.getlength(" ") * (len(ln) - 1) <= area_w
-            for ln in lines
-        ):
+        lines = wrap(words, font, text_w)
+        line_h = int(size * 1.12)
+        if len(lines) * line_h <= top_h - pad:
             break
         size -= 2
-
     font = ImageFont.truetype(font_path, size)
-    lines = wrap(words, font, area_w)
-    line_h = int(size * 1.16)
+    lines = wrap(words, font, text_w)
+    line_h = int(size * 1.12)
     space = font.getlength(" ")
-    stroke = max(2, int(size * 0.06))
 
-    total_h = len(lines) * line_h
-    y = pad_top + max(0, (area_h - total_h) // 2)
+    y = pad + max(0, (top_h - pad - len(lines) * line_h) // 2)
     for ln in lines:
-        x = pad_x
+        x = pad
         for w, colour in ln:
-            # soft shadow for depth, then the word with a thin dark outline
-            draw.text((x + 2, y + 3), w, font=font, fill=(0, 0, 0))
-            draw.text((x, y), w, font=font, fill=colour,
-                      stroke_width=stroke,
-                      stroke_fill=(15, 15, 18))
+            draw.text((x, y), w, font=font, fill=colour)
             x += font.getlength(w) + space
         y += line_h
+
+    # --- yellow kicker banner along the bottom-left ---
+    if kicker:
+        bsize = int(banner_h * 0.5)
+        bfont = ImageFont.truetype(font_path, bsize)
+        ktext = kicker.upper()
+        while bfont.getlength(ktext) > text_w and bsize > 20:
+            bsize -= 2
+            bfont = ImageFont.truetype(font_path, bsize)
+        tw = bfont.getlength(ktext)
+        by0 = H - banner_h
+        pad_b = int(bsize * 0.4)
+        draw.rectangle((pad - pad_b // 2, by0, pad + tw + pad_b, by0 + banner_h - pad // 2), fill=YELLOW)
+        draw.text((pad + pad_b // 2, by0 + (banner_h - pad // 2 - bsize) // 2 - int(bsize * 0.05)),
+                  ktext, font=bfont, fill=BLACK)
 
     canvas.save(out_path, quality=92)
     sys.stderr.write("thumbnail: wrote %s (font %dpx, %d lines)\n" % (out_path, size, len(lines)))
